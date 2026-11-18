@@ -19,7 +19,8 @@ function assertInspectable(o) {
   must(o.delivery_status === 'delivered', '납품물이 전달되지 않아 검수를 진행할 수 없습니다.', 409, 'NOT_DELIVERED');
   must(o.inspection_status === 'in_progress', '검수 중인 주문이 아닙니다.', 409);
   must(o.dispute_status !== 'open', '분쟁 처리 중에는 구매확정을 할 수 없습니다.', 409);
-  must(!['requested', 'processing', 'completed', 'manual_required'].includes(o.refund_status), '환불 절차가 진행 중입니다.', 409);
+  must(!['requested', 'processing', 'manual_required'].includes(o.refund_status), '환불 절차가 진행 중입니다.', 409);
+  must(o.payment_status !== 'refunded', '전액 환불된 주문입니다.', 409);   // 부분 환불이 끝난 주문은 남은 금액에 대해 구매확정할 수 있다
 }
 function finish(orderId, status, actor) {
   q.update('orders', orderId, { inspection_status: status, confirmed_at: clock.iso(), confirmed_by: actor?.id ?? null });

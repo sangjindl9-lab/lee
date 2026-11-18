@@ -108,11 +108,17 @@ function filesCard(req, o, role, linkBase) {
 function moneyCard(o, role) {
   if (role === 'buyer') return '';
   const sellerPg = o.pg_fee_bearer === 'seller' ? o.pg_fee_amount : 0;
+  const po = q.get("SELECT * FROM payouts WHERE order_id = ? AND status IN ('created','requested','unknown','paid') ORDER BY id DESC", o.id);
+  const payable = po ? po.gross_amount ?? po.amount : ledger.sellerPayable(o.id);
+  const est = require('../services/tax').withholding(o.seller_id, payable);
+  const taxLine = (x) => (x.tax_type === 'individual' ? `사업소득 원천징수 — 소득세 ${won(x.withholding_income)} + 지방소득세 ${won(x.withholding_local)} 공제`
+    : x.tax_type === 'general' ? `수수료 세금계산서 대상 — 공급가액 ${won(o.fee_amount - o.fee_vat)} + 부가세 ${won(o.fee_vat)}` : '간이과세자 — 세금계산서 수수 여부에 따라 정산 내역 기록');
   return card('정산 내역', dl([
     ['결제액', won(o.amount)], ['플랫폼 수수료', html`${won(o.fee_amount)} <span class="muted">(${bpsPct(o.fee_bps)}, 부가세 ${won(o.fee_vat)} 포함 — 주문 시점 정책 고정)</span>`],
     ['결제 비용', html`${won(o.pg_fee_amount)} <span class="muted">(추정 ${bpsPct(o.pg_fee_bps)}, ${o.pg_fee_bearer === 'seller' ? '판매자 부담' : '플랫폼 부담'})</span>`],
-    ['환불액', won(o.refunded_amount)], ['예상 지급액', won(o.amount - o.fee_amount - sellerPg)],
-    ['실제 지급액', won(q.get("SELECT COALESCE(SUM(amount),0) s FROM payouts WHERE order_id = ? AND status = 'paid'", o.id).s)],
+    ['환불액', won(o.refunded_amount)], ['정산 대상액', html`${won(payable)} <span class="muted">(주문 시 예상 ${won(o.amount - o.fee_amount - sellerPg)})</span>`],
+    ['세무 처리', po && po.tax_type ? taxLine(po) : html`${taxLine({ tax_type: est.taxType, withholding_income: est.income, withholding_local: est.local })} <span class="muted">(현재 과세 유형 기준 예상)</span>`],
+    ['실제 지급액', html`${won(q.get("SELECT COALESCE(SUM(amount),0) s FROM payouts WHERE order_id = ? AND status = 'paid'", o.id).s)}${po && po.status !== 'paid' ? html` <span class="muted">(${won(po.amount)} 지급 진행 중)</span>` : ''}`],
   ]));
 }
 

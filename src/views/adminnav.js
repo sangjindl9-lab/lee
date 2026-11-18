@@ -11,6 +11,7 @@ const ITEMS = [
   ['/admin/tickets', '지원 티켓', ['support']],
   ['/admin/payouts', '정산·지급', ['settlement']],
   ['/admin/refunds', '환불', ['settlement']],
+  ['/admin/tax', '세무 증빙', ['settlement']],
   ['/admin/reconcile', '대사', ['settlement']],
   ['/admin/fees', '수수료 정책', ['settlement']],
   ['/admin/pg', '결제 사업자 확인표', []],

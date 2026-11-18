@@ -5,6 +5,7 @@ const { clock, must, AppError, str } = require('../util');
 const providers = require('../providers');
 const orders = require('./orders');
 const ledger = require('./ledger');
+const tax = require('./tax');
 const { audit, notify, notifyStaff } = require('../log');
 
 // 지급을 막는 사유 목록. 비어 있어야 지급 요청이 가능하다.
@@ -41,7 +42,8 @@ function refresh(orderId) {
 
 function reverseReservation(payout, error) {
   q.txi(() => {
-    ledger.post(payout.order_id, 'payout_reversed', [['payout_in_transit', payout.amount], ['seller_payable', -payout.amount]], payout.idempotency_key);
+    const wh = payout.withholding_income + payout.withholding_local;
+    ledger.post(payout.order_id, 'payout_reversed', [['payout_in_transit', payout.amount], ['withholding_payable', wh], ['seller_payable', -(payout.amount + wh)]], payout.idempotency_key);
     q.update('payouts', payout.id, { status: 'failed', last_error: str(error, 500), last_checked_at: clock.iso() });
     q.update('orders', payout.order_id, { payout_status: 'failed' });
   });
@@ -59,7 +61,11 @@ function finalizePaid(payout, ext = {}) {
     q.update('orders', cur.order_id, { payout_status: 'paid', protection_status: o.protection_status === 'held' ? 'released' : o.protection_status });
     done = true;
   });
-  if (done) notify(payout.seller_id, '정산이 지급 완료되었습니다', `${payout.amount.toLocaleString('ko-KR')}원`, '/my/payouts');
+  if (done) {
+    tax.recordForPayout(payout.id);
+    const wh = payout.withholding_income + payout.withholding_local;
+    notify(payout.seller_id, '정산이 지급 완료되었습니다', `${payout.amount.toLocaleString('ko-KR')}원${wh ? ` (원천징수 ${wh.toLocaleString('ko-KR')}원 공제)` : ''}`, '/my/payouts');
+  }
 }
 
 // 지급 요청. ① DB 트랜잭션에서 조건 확인과 금액 예약 → ② 사업자 호출 → ③ 결과 반영
@@ -71,14 +77,17 @@ async function requestPayout(actor, orderId) {
     must(o, '주문을 찾을 수 없습니다.', 404);
     const b = blockers(o);
     if (b.length) throw new AppError('지급할 수 없습니다: ' + b.join(', '), 409, 'PAYOUT_BLOCKED');
-    const amount = ledger.sellerPayable(o.id);
+    // 지급 대상액(gross)에서 판매자 과세 유형에 따른 원천징수 세액을 뺀 금액이 실제 이체액(amount)이다.
+    const gross = ledger.sellerPayable(o.id);
+    const t = tax.withholding(o.seller_id, gross);
     const n = q.get('SELECT COUNT(*) c FROM payouts WHERE order_id = ?', o.id).c + 1;
     const acct = q.get("SELECT id FROM seller_bank_accounts WHERE seller_id = ? AND status = 'active'", o.seller_id);
     const id = q.insert('payouts', {
-      order_id: o.id, seller_id: o.seller_id, bank_account_id: acct.id, amount, status: 'created',
+      order_id: o.id, seller_id: o.seller_id, bank_account_id: acct.id, amount: t.net, gross_amount: gross,
+      withholding_income: t.income, withholding_local: t.local, tax_type: t.taxType, status: 'created',
       method: caps.payout_api ? 'provider' : 'manual', idempotency_key: `po_${o.order_no}_${n}`, created_by: actor?.id ?? null, created_at: clock.iso(),
     });
-    ledger.post(o.id, 'payout_reserved', [['seller_payable', amount], ['payout_in_transit', -amount]], `po_${o.order_no}_${n}`);
+    ledger.post(o.id, 'payout_reserved', [['seller_payable', gross], ['payout_in_transit', -t.net], ['withholding_payable', -t.total]], `po_${o.order_no}_${n}`);
     q.update('orders', o.id, { payout_status: 'requested' });
     payout = q.get('SELECT * FROM payouts WHERE id = ?', id);
   });

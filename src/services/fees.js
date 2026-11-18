@@ -23,6 +23,12 @@ function quote(amount, sellerId, categoryId) {
     amount, fee_bps: rate.bps, fee_amount: fee, fee_vat: feeVat, fee_policy_id: rate.policyId, fee_policy_label: rate.label,
     pg_fee_bps: pgBps, pg_fee_amount: pgFee, pg_fee_bearer: bearer,
     seller_net: amount - fee - (bearer === 'seller' ? pgFee : 0),
+    ...taxEstimate(sellerId, amount - fee - (bearer === 'seller' ? pgFee : 0), fee, feeVat),
   };
+}
+// 판매자 과세 유형에 따른 예상 세무 항목(판매 전 안내용)
+function taxEstimate(sellerId, sellerNet, fee, feeVat) {
+  const t = require('./tax').withholding(sellerId, sellerNet);
+  return { seller_tax_type: t.taxType, fee_supply: fee - feeVat, withholding_income: t.income, withholding_local: t.local, withholding_total: t.total, seller_transfer: t.net };
 }
 module.exports = { resolveRate, quote };

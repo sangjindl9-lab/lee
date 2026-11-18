@@ -31,9 +31,9 @@ function staff(...roles) {
   return refresh(u);
 }
 const refresh = (u) => { const s = accounts.sessionUser(accounts.createSession(u.id)); return s; };
-function seller(admin, name = 'seller') {
+function seller(admin, name = 'seller', opts = {}) {
   let u = user(name);
-  accounts.applySeller(u, { displayName: name + ' 스튜디오' });
+  accounts.applySeller(u, { displayName: name + ' 스튜디오', bizType: opts.bizType || 'corp', taxType: opts.taxType || 'general', simplifiedInvoiceOk: opts.simplifiedInvoiceOk });
   accounts.reviewSeller(admin, u.id, { status: 'approved', note: '확인' });
   u = refresh(u);
   accounts.setBankAccount(u, { bank: '국민', account: '123456789012', holder: name });

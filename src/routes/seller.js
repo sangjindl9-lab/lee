@@ -20,11 +20,15 @@ r.get('/my/seller', needUser, (req, res) => {
     <form method="post" action="/my/seller" class="card">${csrf(req)}
       ${field('상점 이름', 'displayName', s.display_name, { required: true })}
       <div class="row">${field('구분', 'bizType', s.biz_type, { options: [['individual', '개인'], ['sole', '개인사업자'], ['corp', '법인']] })}${field('사업자등록번호', 'bizNo', s.biz_no, { hint: '사업자인 경우' })}</div>
+      ${s.status === 'approved'
+        ? html`<div class="field"><label>과세 유형</label><p>${accounts.TAX_TYPES[s.tax_type]}${s.tax_type === 'simplified' ? (s.simplified_invoice_ok ? ' · 세금계산서 수수 대상' : ' · 세금계산서 수수 대상 아님') : ''}</p><p class="hint">승인 후에는 고객지원을 통해 증빙 확인 뒤 변경됩니다</p></div>`
+        : html`<div class="row">${field('과세 유형', 'taxType', s.tax_type || 'individual', { options: Object.entries(accounts.TAX_TYPES), hint: '개인(비사업자)은 지급 시 사업소득세 3.3%가 원천징수됩니다. 사업자는 플랫폼 수수료에 대한 세금계산서 기초 자료가 기록됩니다' })}
+          ${field('간이과세자인 경우', 'simplifiedInvoiceOk', s.simplified_invoice_ok ? '1' : '', { options: [['', '세금계산서 수수 대상 아님'], ['1', '세금계산서 수수 대상']] })}</div>`}
       ${field('소개', 'intro', s.intro, { rows: 4 })}${field('기술·분야', 'skills', s.skills, { hint: '쉼표로 구분. 예: Node.js, 엑셀 자동화, ERP' })}
       ${field('포트폴리오', 'portfolio', s.portfolio, { rows: 5, hint: '한 줄에 한 항목. 실제 수행한 작업만 적어 주세요' })}
       <button class="btn primary">${s.status ? '저장' : '판매자 등록 신청'}</button></form>` });
 });
-r.post('/my/seller', needUser, h(async (req, res) => { accounts.applySeller(req.user, req.body); res.flash('저장했습니다'); res.back(); }));
+r.post('/my/seller', needUser, h(async (req, res) => { accounts.applySeller(req.user, { ...req.body, simplifiedInvoiceOk: req.body.simplifiedInvoiceOk === '1' }); res.flash('저장했습니다'); res.back(); }));
 
 // ── 상품 목록
 r.get('/my/products', needSeller, (req, res) => {
@@ -78,7 +82,7 @@ r.get('/my/products/:id', needSeller, h(async (req, res) => {
     <div class="head"><div><h1>${p.title}</h1><p>${badge('product', p.status)} ${p.review_note || ''}</p></div>
       <div class="actions"><a class="btn sm" href="/products/${p.id}">미리보기</a>${['draft', 'rejected'].includes(p.status) ? postBtn(req, `/my/products/${p.id}/submit`, '심사 요청', { cls: 'primary sm' }) : ''}${postBtn(req, `/my/products/${p.id}/delete`, '판매 종료', { cls: 'danger sm' })}</div></div>
     ${card('판매 옵션과 예상 정산액', html`
-      ${table(['옵션', '가격', '조건', '플랫폼 수수료', '예상 정산액', ''], opts.map((o) => { const f = fees.quote(o.price, p.seller_id, p.category_id); return [o.name, won(o.price), `${o.term === 'term' ? `기간제 ${o.term_days}일` : '영구'}${o.seats ? ` · ${o.seats}명` : ''}${o.devices ? ` · ${o.devices}대` : ''}${o.includes_source ? ' · 소스 포함' : ''}${o.includes_install ? ' · 설치 지원' : ''}`, `${won(f.fee_amount)} (${bpsPct(f.fee_bps)})`, html`${won(f.seller_net)}${f.pg_fee_bearer === 'seller' ? html`<br><span class="muted">결제 비용 ${won(f.pg_fee_amount)} 차감(추정)</span>` : ''}`, postBtn(req, `/my/products/${p.id}/options/${o.id}/toggle`, o.active ? '판매 중지' : '판매 재개', { cls: 'sm' })]; }), '옵션을 추가하세요')}
+      ${table(['옵션', '가격', '조건', '플랫폼 수수료', '예상 정산액', ''], opts.map((o) => { const f = fees.quote(o.price, p.seller_id, p.category_id); return [o.name, won(o.price), `${o.term === 'term' ? `기간제 ${o.term_days}일` : '영구'}${o.seats ? ` · ${o.seats}명` : ''}${o.devices ? ` · ${o.devices}대` : ''}${o.includes_source ? ' · 소스 포함' : ''}${o.includes_install ? ' · 설치 지원' : ''}`, `${won(f.fee_amount)} (${bpsPct(f.fee_bps)})`, html`${won(f.seller_transfer)}${f.pg_fee_bearer === 'seller' ? html`<br><span class="muted">결제 비용 ${won(f.pg_fee_amount)} 차감(추정)</span>` : ''}${f.withholding_total ? html`<br><span class="muted">원천징수 ${won(f.withholding_total)} 공제 후</span>` : ''}`, postBtn(req, `/my/products/${p.id}/options/${o.id}/toggle`, o.active ? '판매 중지' : '판매 재개', { cls: 'sm' })]; }), '옵션을 추가하세요')}
       <p class="hint">수수료는 주문 시점의 정책이 주문에 고정됩니다. 표시된 금액은 현재 정책 기준 예상치이며 환불 시 달라집니다</p>
       <form method="post" action="/my/products/${p.id}/options">${csrf(req)}<div class="row">
         ${field('옵션 이름', 'name', '', { required: true })}${field('가격(원)', 'price', '', { required: true, attrs: 'inputmode="numeric"' })}${field('기간', 'term', 'perpetual', { options: [['perpetual', '영구'], ['term', '기간제']] })}${field('기간(일)', 'term_days', '', { type: 'number' })}
@@ -120,9 +124,11 @@ r.get('/my/payouts', needUser, (req, res) => {
       <p class="hint">변경하려면 비밀번호를 다시 확인하며, 변경 사실이 알림으로 남고 ${q.settingInt('bank_change_hold_hours')}시간 동안 지급이 보류됩니다</p>
       <form method="post" action="/my/payouts/account">${csrf(req)}<div class="row">${field('은행', 'bank', '', { required: true })}${field('계좌번호', 'account', '', { required: true, attrs: 'inputmode="numeric" autocomplete="off"' })}${field('예금주', 'holder', '', { required: true })}</div><button class="btn">저장</button></form>`)}
     ${card('정산 대기 주문', table(['주문', '결제액', '검수', '지급 상태'], waiting.map((o) => [html`<a href="/my/sales/${o.id}">${o.title}</a>`, won(o.amount), badge('inspection', o.inspection_status), badge('payout', o.payout_status)]), '정산 대기 주문이 없습니다'))}
-    ${card('지급 내역', table(['주문', '금액', '상태', '요청', '완료'], pos.map((p) => [html`${p.title}<br><span class="muted">${p.order_no}</span>`, won(p.amount), tag(...ST[p.status]), fmtDate(p.created_at), fmtDate(p.paid_at)]), '지급 내역이 없습니다'))}
+    ${card('지급 내역', table(['주문', '정산 대상액', '원천징수', '실제 지급액', '상태', '요청', '완료'], pos.map((p) => [html`${p.title}<br><span class="muted">${p.order_no}</span>`, won(p.gross_amount ?? p.amount), p.withholding_income + p.withholding_local ? html`${won(p.withholding_income + p.withholding_local)}<br><span class="muted">소득세 ${won(p.withholding_income)} · 지방 ${won(p.withholding_local)}</span>` : '-', won(p.amount), tag(...ST[p.status]), fmtDate(p.created_at), fmtDate(p.paid_at)]), '지급 내역이 없습니다'))}
     ${card('예상 정산액 계산', html`<form method="get" class="filters"><input type="number" name="amount" value="${req.query.amount || ''}" placeholder="판매 가격(원)"><button class="btn sm">계산</button></form>
-      ${calc ? ui.dl([['결제액', won(calc.amount)], ['플랫폼 수수료', `${won(calc.fee_amount)} (${bpsPct(calc.fee_bps)} · ${calc.fee_policy_label}, 부가세 ${won(calc.fee_vat)} 포함)`], ['결제 비용', `${won(calc.pg_fee_amount)} (추정 ${bpsPct(calc.pg_fee_bps)}, ${calc.pg_fee_bearer === 'seller' ? '판매자 부담' : '플랫폼 부담'})`], ['예상 지급액', won(calc.seller_net)]]) : ''}
+      ${calc ? ui.dl([['결제액', won(calc.amount)], ['플랫폼 수수료', `${won(calc.fee_amount)} (${bpsPct(calc.fee_bps)} · ${calc.fee_policy_label}, 부가세 ${won(calc.fee_vat)} 포함)`], ['결제 비용', `${won(calc.pg_fee_amount)} (추정 ${bpsPct(calc.pg_fee_bps)}, ${calc.pg_fee_bearer === 'seller' ? '판매자 부담' : '플랫폼 부담'})`], ['정산 대상액', won(calc.seller_net)],
+        calc.seller_tax_type === 'individual' ? ['원천징수(3.3%)', `소득세 ${won(calc.withholding_income)} + 지방소득세 ${won(calc.withholding_local)}`] : ['수수료 증빙', calc.seller_tax_type === 'general' ? `세금계산서 대상 — 공급가액 ${won(calc.fee_supply)} + 부가세 ${won(calc.fee_vat)}` : '과세 유형에 따라 세금계산서 수수 여부 구분'],
+        ['예상 실제 지급액', won(calc.seller_transfer)]]) : ''}
       <p class="hint">세금 관련 항목은 참고용이며 세무 검토 전 수치입니다</p>`)}` });
 });
 r.post('/my/payouts/account', needSeller, h(async (req, res) => { accounts.setBankAccount(req.user, req.body); res.flash('정산 계좌를 저장했습니다'); res.back(); }));

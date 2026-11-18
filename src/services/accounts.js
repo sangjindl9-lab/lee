@@ -90,12 +90,25 @@ function totpVerify(user, code) {
 }
 
 // ── 판매자
-function applySeller(user, { displayName, intro, skills, portfolio, bizType, bizNo }) {
+const TAX_TYPES = { general: '법인·일반과세자', simplified: '간이과세자', individual: '개인(비사업자) — 사업소득 3.3% 원천징수' };
+function setTaxType(admin, userId, { taxType, simplifiedInvoiceOk, note }) {
+  must(TAX_TYPES[taxType], '과세 유형을 선택하세요.');
+  must(str(note).length >= 5, '확인 근거(사업자등록증 확인 등)를 적어 주세요.');
+  const before = q.get('SELECT tax_type, simplified_invoice_ok FROM seller_profiles WHERE user_id = ?', userId);
+  must(before, '판매자를 찾을 수 없습니다.', 404);
+  q.update('seller_profiles', userId, { tax_type: taxType, simplified_invoice_ok: taxType === 'simplified' && simplifiedInvoiceOk ? 1 : 0 }, 'user_id');
+  audit(admin, 'seller.tax_type', 'user', userId, { before, taxType, simplifiedInvoiceOk: !!simplifiedInvoiceOk, note: str(note, 500) });
+  notify(userId, '과세 유형이 변경되었습니다', `${TAX_TYPES[taxType]} — 이후 지급분부터 적용됩니다`, '/my/seller');
+}
+function applySeller(user, { displayName, intro, skills, portfolio, bizType, bizNo, taxType, simplifiedInvoiceOk }) {
   must(str(displayName, 60).length >= 2, '상점 이름을 입력하세요.');
   const row = { display_name: str(displayName, 60), intro: str(intro, 2000), skills: str(skills, 500), portfolio: str(portfolio, 3000), biz_type: ['individual', 'sole', 'corp'].includes(bizType) ? bizType : 'individual', biz_no: str(bizNo, 20) };
   const ex = q.get('SELECT * FROM seller_profiles WHERE user_id = ?', user.id);
-  if (ex) q.update('seller_profiles', user.id, { ...row, status: ex.status === 'rejected' ? 'pending' : ex.status }, 'user_id');
-  else q.insert('seller_profiles', { user_id: user.id, ...row, created_at: clock.iso() });
+  // 과세 유형은 원천징수·세금계산서 처리를 좌우하므로 승인 뒤에는 판매자가 직접 바꿀 수 없다(운영자 확인 후 변경).
+  const tax = { tax_type: TAX_TYPES[taxType] ? taxType : (row.biz_type === 'individual' ? 'individual' : 'general'), simplified_invoice_ok: taxType === 'simplified' && simplifiedInvoiceOk ? 1 : 0 };
+  if (row.biz_type === 'individual') Object.assign(tax, { tax_type: 'individual', simplified_invoice_ok: 0 });
+  if (ex) q.update('seller_profiles', user.id, { ...row, ...(ex.status === 'approved' ? { biz_type: ex.biz_type } : tax), status: ex.status === 'rejected' ? 'pending' : ex.status }, 'user_id');
+  else q.insert('seller_profiles', { user_id: user.id, ...row, ...tax, created_at: clock.iso() });
   require('../log').notifyStaff('review', '판매자 심사 요청', row.display_name, '/admin/sellers');
 }
 function reviewSeller(admin, userId, { status, note }) {
@@ -141,4 +154,4 @@ function ensureAdmin(email, password) {
   if (!u) u = register({ email, password, name: '최고관리자' });
   q.run("INSERT OR IGNORE INTO staff_roles (user_id, role, granted_at) VALUES (?, 'super', ?)", u.id, clock.iso());
 }
-module.exports = { register, login, createSession, sessionUser, destroySession, reauth, recentlyReauthed, totp, totpBegin, totpVerify, totpOk, applySeller, reviewSeller, setBankAccount, withdraw, ensureAdmin, hashPw };
+module.exports = { register, login, createSession, sessionUser, destroySession, reauth, recentlyReauthed, totp, totpBegin, totpVerify, totpOk, applySeller, reviewSeller, setTaxType, TAX_TYPES, setBankAccount, withdraw, ensureAdmin, hashPw };

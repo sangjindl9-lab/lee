@@ -43,6 +43,10 @@ const DEFAULT_SETTINGS = {
   download_link_minutes: '10',
   require_malware_scan: '0',         // 1이면 악성 파일 검사 '검사 불가' 파일은 판매 승인 불가
   live_mode: '0',
+  withholding_enabled: '1',          // 개인(비사업자) 판매자 지급 시 사업소득 원천징수 공제
+  withholding_income_bps: '300',     // 소득세 3%
+  withholding_local_pct: '10',       // 지방소득세 = 소득세의 10%
+  withholding_min_tax: '0',          // 소액부징수 기준(원). 0이면 적용 안 함 — 세무 검토 후 설정
 };
 const DEFAULT_CATEGORIES = [
   ['erp', 'ERP·그룹웨어'], ['construction', '건설·전기·통신'], ['accounting', '회계·견적·발주·재고'],

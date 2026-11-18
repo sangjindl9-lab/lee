@@ -71,8 +71,52 @@ r.get('/admin/sellers', needStaff('review'), (req, res) => {
       ${s.review_note ? html`<p class="hint">이전 심사 메모: ${s.review_note} (${userName(s.reviewed_by)}, ${fmtDate(s.reviewed_at)})</p>` : ''}
       <form method="post" action="/admin/sellers/${s.user_id}" class="row">${csrf(req)}
         ${field('결과', 'status', s.status === 'approved' ? 'suspended' : 'approved', { options: [['approved', '승인'], ['rejected', '반려'], ['suspended', '정지']] })}${field('사유·메모', 'note', '')}
-        <div class="field"><label>&nbsp;</label><button class="btn sm">처리</button></div></form>`)) : html`<p class="empty">판매자 신청이 없습니다</p>`}`);
+        <div class="field"><label>&nbsp;</label><button class="btn sm">처리</button></div></form>
+      <form method="post" action="/admin/sellers/${s.user_id}/tax" class="row">${csrf(req)}
+        ${field('과세 유형', 'tax_type', s.tax_type, { options: Object.entries(accounts.TAX_TYPES), hint: '사업자등록증 등으로 확인한 뒤 설정하세요. 개인은 지급 시 3.3%가 원천징수됩니다' })}
+        ${field('간이과세자 세금계산서', 'simplified_invoice_ok', s.simplified_invoice_ok, { options: [[0, '수수 대상 아님'], [1, '수수 대상']] })}${field('확인 근거', 'note', '')}
+        <div class="field"><label>&nbsp;</label><button class="btn sm">과세 유형 저장</button></div></form>`)) : html`<p class="empty">판매자 신청이 없습니다</p>`}`);
 });
+r.post('/admin/sellers/:id/tax', needStaff('review'), h(async (req, res) => {
+  accounts.setTaxType(req.user, int(req.params.id), { taxType: req.body.tax_type, simplifiedInvoiceOk: req.body.simplified_invoice_ok === '1', note: req.body.note });
+  res.flash('과세 유형을 저장했습니다. 이후 지급분부터 적용됩니다'); res.back('/admin/sellers');
+}));
+
+// ── 세무 증빙 기초 데이터
+const TAX_DOC = { fee_tax_invoice: '수수료 세금계산서 발행 대상', fee_record: '수수료 정산 기록(세금계산서 대상 아님)', withholding: '사업소득 원천징수(지급명세서 기초)' };
+const taxRows = (period) => q.all(`SELECT t.*, o.order_no, s.display_name, s.biz_no, u.name FROM tax_records t JOIN orders o ON o.id = t.order_id
+  JOIN seller_profiles s ON s.user_id = t.seller_id JOIN users u ON u.id = t.seller_id WHERE (? = '' OR t.period = ?) ORDER BY t.id DESC LIMIT 2000`, period, period);
+r.get('/admin/tax', needStaff('settlement'), (req, res) => {
+  const period = /^\d{4}-\d{2}$/.test(req.query.period || '') ? req.query.period : '';
+  const rows = taxRows(period);
+  const sum = (type, k) => rows.filter((x) => x.doc_type === type).reduce((a, x) => a + x[k], 0);
+  page(req, res, '세무 증빙', html`${head('세무 증빙 기초 데이터', '지급 완료 건에 대해 생성됩니다. 실제 세금계산서 발행, 원천세 신고, 지급명세서 제출은 이 화면 밖에서 이루어집니다')}
+    ${notice('세율, 절사, 소액부징수, 원천징수 의무자 판단은 세무 검토 전 기준입니다. 지급명세서에 필요한 소득자 식별정보는 이 시스템이 수집하지 않습니다', 'warn')}
+    <form class="filters" method="get"><input type="text" name="period" value="${period}" placeholder="귀속 연월 2026-11"><button class="btn sm">조회</button><a class="btn sm" href="/admin/tax.csv?period=${period}">CSV 내려받기</a></form>
+    ${card('합계', dl([
+      ['세금계산서 대상 수수료', html`공급가액 ${won(sum('fee_tax_invoice', 'supply_amount'))} · 부가세 ${won(sum('fee_tax_invoice', 'vat_amount'))}`],
+      ['세금계산서 대상 아닌 수수료', won(sum('fee_record', 'base_amount'))],
+      ['원천징수', html`지급 대상액 ${won(sum('withholding', 'base_amount'))} · 소득세 ${won(sum('withholding', 'income_tax'))} · 지방소득세 ${won(sum('withholding', 'local_tax'))}`],
+    ]))}
+    ${table(['귀속', '판매자', '구분', '기준 금액', '공급가액 / 부가세', '소득세 / 지방소득세', '상태', ''], rows.map((x) => [x.period, html`${x.display_name}<br><span class="muted">${accounts.TAX_TYPES[x.seller_tax_type]}${x.biz_no ? ` · ${x.biz_no}` : ''}</span>`, html`${TAX_DOC[x.doc_type]}<br><a href="/admin/orders/${x.order_id}">${x.order_no}</a>`, won(x.base_amount),
+      x.doc_type === 'withholding' ? '-' : `${won(x.supply_amount)} / ${won(x.vat_amount)}`, x.doc_type === 'withholding' ? `${won(x.income_tax)} / ${won(x.local_tax)}` : '-',
+      x.status === 'issued' ? html`처리 기록됨<br><span class="muted">${x.issued_ref}</span>` : '기초 데이터',
+      x.status === 'draft' ? html`<form method="post" action="/admin/tax/${x.id}/issued" class="inline">${csrf(req)}<input type="text" name="ref" placeholder="승인번호·신고 참조" required><button class="btn sm">처리 기록</button></form>` : '']), '해당 기간의 기록이 없습니다')}`);
+});
+r.get('/admin/tax.csv', needStaff('settlement'), (req, res) => {
+  const period = /^\d{4}-\d{2}$/.test(req.query.period || '') ? req.query.period : '';
+  const cell = (v) => { const t = String(v ?? ''); return `"${(/^[=+\-@]/.test(t) ? "'" + t : t).replace(/"/g, '""')}"`; };
+  const lines = [['귀속연월', '주문번호', '판매자', '사업자번호', '과세유형', '구분', '기준금액', '공급가액', '부가세', '소득세', '지방소득세', '상태', '참조'].map(cell).join(',')];
+  for (const x of taxRows(period)) lines.push([x.period, x.order_no, x.display_name, x.biz_no, accounts.TAX_TYPES[x.seller_tax_type], TAX_DOC[x.doc_type], x.base_amount, x.supply_amount, x.vat_amount, x.income_tax, x.local_tax, x.status, x.issued_ref].map(cell).join(','));
+  audit(req.user, 'tax.export', 'tax_records', period || 'all', { rows: lines.length - 1 }, req.ip);
+  res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="eum-tax-${period || 'all'}.csv"`, 'Cache-Control': 'no-store' });
+  res.send('\ufeff' + lines.join('\r\n'));
+});
+r.post('/admin/tax/:id/issued', needStaff('settlement'), h(async (req, res) => {
+  must(q.get("SELECT 1 FROM tax_records WHERE id = ? AND status = 'draft'", int(req.params.id)) && str(req.body.ref).length >= 2, '처리 참조를 입력하세요.');
+  require('../services/tax').markIssued(req.user, int(req.params.id), req.body.ref);
+  res.back('/admin/tax');
+}));
 r.post('/admin/sellers/:id', needStaff('review'), h(async (req, res) => {
   must(q.get('SELECT 1 FROM seller_profiles WHERE user_id = ?', int(req.params.id)), '판매자를 찾을 수 없습니다.', 404);
   if (req.body.status !== 'approved') must(str(req.body.note).length >= 5, '반려·정지 사유를 적어 주세요.');
