@@ -20,7 +20,7 @@ const cats = () => q.all('SELECT * FROM categories ORDER BY sort');
 
 function pcard(p) {
   return html`<a class="pcard" href="/products/${p.id}">
-    <div class="meta">${tag(TYPE[p.type])}${tag(PLATFORM[p.platform])}${p.category_name ? tag(p.category_name) : ''}</div>
+    <div class="meta">${tag(TYPE[p.type])}${tag(PLATFORM[p.platform])}${p.category_name && p.category_name !== PLATFORM[p.platform] ? tag(p.category_name) : ''}</div>
     <h3>${p.title}</h3><p class="sub">${p.summary}</p>
     <div class="meta">${p.install_support ? tag('설치 지원') : ''}${p.customizable ? tag('커스터마이징') : ''}${p.external_paid_required ? tag('외부 유료 서비스 필요', 'warn') : ''}</div>
     <p class="muted">${p.seller_name}${p.reviews ? ` · 구매 후기 ${p.rating}점(${p.reviews}건)` : ''}</p>
@@ -65,7 +65,13 @@ r.get('/', (req, res) => {
 // ── 마켓 목록·검색
 r.get('/market', (req, res) => {
   const f = req.query;
-  const list = catalog.search(f);
+  const all = catalog.search(f);
+  const PER = 24, pages = Math.max(1, Math.ceil(all.length / PER)), page = Math.min(Math.max(int(f.page, 1), 1), pages);
+  const list = all.slice((page - 1) * PER, page * PER);
+  const link = (n) => '/market?' + new URLSearchParams({ ...Object.fromEntries(Object.entries(f).filter(([k, v]) => k !== 'page' && typeof v === 'string' && v !== '')), page: String(n) });
+  const pager = pages > 1 ? html`<nav class="pager" aria-label="페이지">${page > 1 ? html`<a class="btn sm" href="${link(page - 1)}">이전</a>` : ''}
+    ${Array.from({ length: pages }, (_, i) => i + 1).filter((n) => n === 1 || n === pages || Math.abs(n - page) <= 2).map((n, i, arr) => html`${i && n - arr[i - 1] > 1 ? html`<span class="muted">…</span>` : ''}${n === page ? html`<span class="btn sm on" aria-current="page">${n}</span>` : html`<a class="btn sm" href="${link(n)}">${n}</a>`}`)}
+    ${page < pages ? html`<a class="btn sm" href="${link(page + 1)}">다음</a>` : ''}</nav>` : '';
   const sel = (name, opts, cur) => html`<select name="${name}" aria-label="${name}">${opts.map(([v, l]) => html`<option value="${v}" ${String(cur || '') === String(v) ? ui.raw('selected') : ''}>${l}</option>`)}</select>`;
   res.page({ title: f.type ? TYPE[f.type] + ' 마켓' : '마켓', body: html`
     <div class="head"><div><h1>${f.type === 'source' ? '소스코드 마켓' : f.type === 'license' ? '솔루션 마켓' : '전체 상품'}</h1>
@@ -81,7 +87,8 @@ r.get('/market', (req, res) => {
       ${sel('sort', [['new', '최신순'], ['price', '낮은 가격순'], ['rating', '평가순']], f.sort)}
       ${check('소스 제공', 'source', f.source)}${check('설치 지원', 'install', f.install)}${check('커스터마이징', 'custom', f.custom)}${check('외부 유료 서비스 불필요', 'noext', f.noext)}
       <button class="btn sm">적용</button></form>
-    ${list.length ? html`<div class="pgrid">${list.map(pcard)}</div>` : html`<p class="empty">조건에 맞는 상품이 없습니다</p>`}` });
+    <p class="muted">상품 ${all.length}개${pages > 1 ? ` · ${page} / ${pages} 페이지` : ''}</p>
+    ${list.length ? html`<div class="pgrid">${list.map(pcard)}</div>${pager}` : html`<p class="empty">조건에 맞는 상품이 없습니다</p>`}` });
 });
 
 // ── 상품 상세

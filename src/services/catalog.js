@@ -187,6 +187,6 @@ function search(f = {}) {
       (SELECT ROUND(AVG(rating), 1) FROM reviews r WHERE r.product_id = p.id AND r.hidden = 0) AS rating,
       (SELECT COUNT(*) FROM reviews r WHERE r.product_id = p.id AND r.hidden = 0) AS reviews
     FROM products p JOIN seller_profiles sp ON sp.user_id = p.seller_id LEFT JOIN categories c ON c.id = p.category_id
-    WHERE ${where.join(' AND ')} GROUP BY p.id ${having.length ? 'HAVING ' + having.join(' AND ') : ''} ORDER BY ${sort} LIMIT 60`, ...args);
+    WHERE ${where.join(' AND ')} GROUP BY p.id ${having.length ? 'HAVING ' + having.join(' AND ') : ''} ORDER BY ${sort} LIMIT 5000`, ...args);
 }
 module.exports = { own, saveProduct, saveOption, toggleOption, draftVersion, addVersionFile, removeVersionFile, versionFiles, versionProblems, submitVersion, submitForReview, reviewProduct, deleteProduct, setSalesBlock, overrideScan, addVerification, search };

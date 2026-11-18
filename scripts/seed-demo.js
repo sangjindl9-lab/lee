@@ -1,5 +1,5 @@
 'use strict';
-// 시연용 가공 데이터: 상품 50개와 각 상품의 "거래 완료(구매확정·정산 완료)" 테스트 주문.
+// 시연용 가공 데이터: 상품 150개(기본 50 + 추가 100)와 각 상품의 "거래 완료(구매확정·정산 완료)" 테스트 주문.
 // 실제 판매 실적이 아니다. 운영 환경에서는 실행되지 않으며, 테스트 결제 사업자로만 만든다.
 // 실서비스를 열기 전에는 data 폴더를 지워 이 데이터를 모두 없애야 한다(가짜 거래량 표시 금지).
 if (process.env.NODE_ENV === 'production') { console.error('운영 환경에서는 실행할 수 없습니다.'); process.exit(1); }
@@ -85,15 +85,16 @@ const PRODUCTS = [
 const PLATFORM_ENV = { web: 'Node.js 20 이상 또는 Docker, PostgreSQL 15 / 최신 Chrome·Edge', pc: 'Windows 10·11 (64비트)', mobile: 'Android 10 이상, iOS 15 이상' };
 
 (async () => {
-  if (q.get("SELECT 1 FROM users WHERE email LIKE '%@demo.eum.test'")) { console.log('이미 시연용 데이터가 있습니다. 다시 만들려면 data 폴더를 지운 뒤 실행하세요.'); return; }
+  // 여러 번 실행해도 안전하다: 이미 있는 계정과 상품(상품명 기준)은 건너뛰고 없는 것만 추가한다.
   const session = (id) => accounts.sessionUser(accounts.createSession(id));
-  const mk = (email, name) => session(accounts.register({ email, password: PW, name }).id);
+  const mk = (email, name) => { const ex = q.get('SELECT id FROM users WHERE email = ?', email); return session(ex ? ex.id : accounts.register({ email, password: PW, name }).id); };
   let adminRow = q.get("SELECT user_id FROM staff_roles WHERE role = 'super' LIMIT 1");
   if (!adminRow) { const a = mk('admin@demo.eum.test', '시연 운영자'); q.run("INSERT INTO staff_roles (user_id, role, granted_at) VALUES (?, 'super', ?)", a.id, clock.iso()); adminRow = { user_id: a.id }; }
   const admin = session(adminRow.user_id);
   const buyers = ['가온건설', '다온전기', '라온유통', '마루학원', '바른회계'].map((n, i) => mk(`buyer${i + 1}@demo.eum.test`, n + ' 담당자'));
   const sellers = SELLERS.map(([name, bizType, taxType, intro, skills], i) => {
     let u = mk(`seller${i + 1}@demo.eum.test`, name.replace(' 데모', '') + ' 대표');
+    if (u.seller) return u;
     accounts.applySeller(u, { displayName: name, intro: intro + ' (시연용 가공 판매자)', skills, portfolio: '시연용 가공 데이터입니다', bizType, taxType });
     accounts.reviewSeller(admin, u.id, { status: 'approved', note: '시연용' });
     u = session(u.id);
@@ -103,8 +104,10 @@ const PLATFORM_ENV = { web: 'Node.js 20 이상 또는 Docker, PostgreSQL 15 / �
   const file = (s, name, text) => storage.saveBuffer(Buffer.from(text), { originalName: name, uploaderId: s.id, purpose: 'product' });
 
   let done = 0;
-  for (const [si, cat, type, platform, title, summary, price] of PRODUCTS) {
+  const ALL = [...PRODUCTS, ...require('./demo-products-extra')];
+  for (const [si, cat, type, platform, title, summary, price] of ALL) {
     const s = sellers[si];
+    if (q.get('SELECT 1 FROM products WHERE seller_id = ? AND title = ?', s.id, title)) continue;
     const isSrc = type === 'source';
     const pid = catalog.saveProduct(s, null, {
       type, platform, category_id: q.get('SELECT id FROM categories WHERE slug = ?', cat).id, title, summary,
@@ -131,7 +134,7 @@ const PLATFORM_ENV = { web: 'Node.js 20 이상 또는 Docker, PostgreSQL 15 / �
     catalog.submitForReview(s, pid);
     catalog.reviewProduct(admin, pid, { approve: true, note: '시연용' });
     // 거래 완료 주문 1건: 테스트 결제 → 구매확정 → 정산 지급
-    const buyer = buyers[done % buyers.length];
+    const buyer = buyers[(pid + done) % buyers.length];
     const o = orders.createProductOrder(buyer, { productId: pid, optionId: opt, agreed: true });
     const pay = await orders.startPayment(o, buyer);
     await sandbox.simulate(pay.providerPaymentId, { result: 'success', method: 'card' });
@@ -142,6 +145,7 @@ const PLATFORM_ENV = { web: 'Node.js 20 이상 또는 Docker, PostgreSQL 15 / �
   await settlement.tick();
   q.run('UPDATE notifications SET read_at = ? WHERE read_at IS NULL', clock.iso());
   const paid = q.get("SELECT COUNT(*) c FROM orders WHERE payout_status = 'paid'").c;
-  console.log(`시연용 가공 데이터 생성 완료: 상품 ${done}개, 정산까지 끝난 테스트 주문 ${paid}건`);
+  const total = q.get("SELECT COUNT(*) c FROM products WHERE status = 'approved'").c;
+  console.log(done ? `시연용 가공 데이터 생성 완료: 이번에 상품 ${done}개 추가 (판매 중 상품 총 ${total}개, 정산까지 끝난 테스트 주문 총 ${paid}건)` : `추가할 상품이 없습니다. 이미 모두 등록되어 있습니다 (판매 중 상품 총 ${total}개)`);
   console.log(`시연 계정(비밀번호 ${PW}): seller1~8@demo.eum.test, buyer1~5@demo.eum.test`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -75,6 +75,8 @@ input[type=file]{font:inherit;max-width:100%}
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:24px}
 .filters select,.filters input{width:auto;min-width:120px}
+.filters input[type=checkbox]{min-width:0;margin:0}
+.filters .check{margin:0;align-items:center;white-space:nowrap}
 
 .badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:500;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
 .badge.ok{background:var(--ok-bg);color:var(--ok)} .badge.warn{background:var(--warn-bg);color:var(--warn)} .badge.bad{background:var(--bad-bg);color:var(--bad)}
@@ -122,6 +124,8 @@ td.num,th.num{text-align:right}
 .pcard h3{margin:0;font-size:16px}
 .pcard .meta{display:flex;gap:6px;flex-wrap:wrap}
 .pcard .price{margin-top:auto;padding-top:12px;font-weight:600;font-size:16px}
+.pager{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:32px}
+.pager .on{background:var(--navy);border-color:var(--navy);color:#fff}
 .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
 .shots img{width:100%;border-radius:var(--r-ctl);border:1px solid var(--line);display:block}
 
@@ -155,6 +159,7 @@ td.num,th.num{text-align:right}
   .ledger-head{flex-direction:column;align-items:flex-start;gap:4px}
   .row{grid-template-columns:minmax(0,1fr)}
   .filters select,.filters input{min-width:0;flex:1 1 140px}
+  .filters input[type=checkbox]{flex:0 0 auto}
   .ledger-col+.ledger-col{border-left:0;border-top:1px solid var(--line)}
   .hero{gap:32px;padding:16px 0 32px} .hero h1{font-size:28px}
   .sticky{position:static}
