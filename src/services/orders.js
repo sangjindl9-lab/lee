@@ -217,9 +217,12 @@ function orderFiles(o) {
       return { ...sf, scan: f ? scanner.overall(f) : 'pending', scan_detail: f, hash_ok: !!f && f.sha256 === sf.sha256, source: `버전 ${snap.terms.version.label}` };
     });
   }
-  return q.all(`SELECT f.*, df.role, d.seq FROM deliveries d JOIN delivery_files df ON df.delivery_id = d.id JOIN files f ON f.id = df.file_id
-    WHERE d.order_id = ? AND d.status = 'submitted' ORDER BY d.seq, f.id`, o.id)
-    .map((f) => ({ id: f.id, name: f.original_name, size: f.size, sha256: f.sha256, role: f.role, scan: scanner.overall(f), scan_detail: f, hash_ok: true, source: `${f.seq}차 납품` }));
+  const rows = q.all(`SELECT f.*, df.role, d.seq || '차 납품' AS source FROM deliveries d JOIN delivery_files df ON df.delivery_id = d.id JOIN files f ON f.id = df.file_id
+    WHERE d.order_id = ? AND d.status = 'submitted' ORDER BY d.seq, f.id`, o.id);
+  // 지식재산권 거래: 판매자가 인도 완료로 표시한 자산 항목의 첨부 파일
+  if (o.kind === 'ip') rows.push(...q.all(`SELECT f.*, 'other' AS role, '자산 인도: ' || t.description AS source FROM ip_transfer_items t JOIN files f ON f.id = t.file_id
+    WHERE t.deal_id = ? AND t.seller_done_at IS NOT NULL ORDER BY t.id`, o.ip_deal_id));
+  return rows.map((f) => ({ id: f.id, name: f.original_name, size: f.size, sha256: f.sha256, role: f.role, scan: scanner.overall(f), scan_detail: f, hash_ok: true, source: f.source }));
 }
 
 // 이 주문을 볼 수 있는 사람인가(구매자, 판매자, 구매 기업의 관리자·검수 담당자)
