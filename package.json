@@ -11,8 +11,9 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "migrate": "node src/db.js",
-    "seed": "node scripts/seed.js",
-    "test": "node --test --test-concurrency=1 test/*.test.js"
+    "seed": "node --disable-warning=ExperimentalWarning scripts/seed.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "seed:demo": "node --disable-warning=ExperimentalWarning scripts/seed-demo.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
