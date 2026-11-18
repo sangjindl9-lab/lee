@@ -1,9 +1,9 @@
 'use strict';
 // 시연용 가공 데이터: 상품 150개(기본 50 + 추가 100)와 각 상품의 "거래 완료(구매확정·정산 완료)" 테스트 주문.
-// 실제 판매 실적이 아니다. 운영 환경에서는 실행되지 않으며, 테스트 결제 사업자로만 만든다.
-// 실서비스를 열기 전에는 data 폴더를 지워 이 데이터를 모두 없애야 한다(가짜 거래량 표시 금지).
-if (process.env.NODE_ENV === 'production') { console.error('운영 환경에서는 실행할 수 없습니다.'); process.exit(1); }
-const db = require('../src/db'); db.init();
+// 실제 판매 실적이 아니다. 테스트 결제 사업자로만 만든다.
+// 운영 환경에서는 명령으로 실행되지 않고, 시연 배포임을 명시한 DEMO_DATA=1 설정이 있을 때만 서버가 부팅 시 실행한다.
+// 실서비스를 열기 전에는 data 폴더(볼륨)를 비워 이 데이터를 모두 없애야 한다(가짜 거래량 표시 금지).
+const db = require('../src/db');
 const { q } = db;
 const { clock } = require('../src/util');
 const providers = require('../src/providers');
@@ -15,8 +15,6 @@ const settlement = require('../src/services/settlement');
 const storage = require('../src/storage');
 const sandbox = require('../src/providers/sandbox');
 const webhooks = require('../src/services/webhooks');
-if (providers.active().name !== 'sandbox') { console.error('테스트 결제 사업자(sandbox)에서만 실행할 수 있습니다.'); process.exit(1); }
-sandbox.state.deliver = (raw, headers) => webhooks.handle('sandbox', raw, headers);
 
 const PW = 'eum-demo-1234';
 const SELLERS = [
@@ -84,7 +82,9 @@ const PRODUCTS = [
 ];
 const PLATFORM_ENV = { web: 'Node.js 20 이상 또는 Docker, PostgreSQL 15 / 최신 Chrome·Edge', pc: 'Windows 10·11 (64비트)', mobile: 'Android 10 이상, iOS 15 이상' };
 
-(async () => {
+async function run() {
+  if (providers.active().name !== 'sandbox') throw new Error('테스트 결제 사업자(sandbox)에서만 실행할 수 있습니다.');
+  if (!sandbox.state.deliver) sandbox.state.deliver = (raw, headers) => webhooks.handle('sandbox', raw, headers);
   // 여러 번 실행해도 안전하다: 이미 있는 계정과 상품(상품명 기준)은 건너뛰고 없는 것만 추가한다.
   const session = (id) => accounts.sessionUser(accounts.createSession(id));
   const mk = (email, name) => { const ex = q.get('SELECT id FROM users WHERE email = ?', email); return session(ex ? ex.id : accounts.register({ email, password: PW, name }).id); };
@@ -148,4 +148,10 @@ const PLATFORM_ENV = { web: 'Node.js 20 이상 또는 Docker, PostgreSQL 15 / �
   const total = q.get("SELECT COUNT(*) c FROM products WHERE status = 'approved'").c;
   console.log(done ? `시연용 가공 데이터 생성 완료: 이번에 상품 ${done}개 추가 (판매 중 상품 총 ${total}개, 정산까지 끝난 테스트 주문 총 ${paid}건)` : `추가할 상품이 없습니다. 이미 모두 등록되어 있습니다 (판매 중 상품 총 ${total}개)`);
   console.log(`시연 계정(비밀번호 ${PW}): seller1~8@demo.eum.test, buyer1~5@demo.eum.test`);
-})().catch((e) => { console.error(e); process.exit(1); });
+}
+module.exports = { run };
+if (require.main === module) {
+  if (process.env.NODE_ENV === 'production') { console.error('운영 환경에서는 명령으로 실행할 수 없습니다.'); process.exit(1); }
+  db.init();
+  run().catch((e) => { console.error(e); process.exit(1); });
+}

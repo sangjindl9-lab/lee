@@ -15,4 +15,8 @@ const app = require('./src/app').build();
 app.listen(config.port, () => {
   console.log(`이음마켓 실행: ${config.baseUrl} (결제 사업자: ${config.paymentProvider})`);
   jobs.start();
+  // 시연 배포 전용: DEMO_DATA=1이면 가공 상품과 테스트 거래를 채운다(이미 있으면 건너뜀).
+  if (process.env.DEMO_DATA === '1') {
+    require('./scripts/seed-demo').run().catch((e) => console.error('[demo] 시연 데이터 생성 실패:', e.message));
+  }
 });
