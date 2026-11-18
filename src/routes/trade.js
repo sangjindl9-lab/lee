@@ -95,6 +95,8 @@ function revisionsCard(req, o, role) {
   const cls = { undetermined: ['미분류', ''], in_scope: ['계약 범위 내', 'ok'], out_of_scope: ['계약 범위 밖 — 추가 개발 견적 대상', 'warn'] };
   return card('수정 요청', revs.map((v) => html`<div class="card flat"><p>${tag(...cls[v.scope_class])} <span class="muted">${fmtDate(v.created_at)}${v.criteria_ref ? ` · 기준: ${v.criteria_ref}` : ''}</span></p><p>${nl2br(v.content)}</p>
     ${v.seller_response ? html`<p class="sub">판매자 답변: ${nl2br(v.seller_response)}</p>` : ''}
+    ${v.scope_class === 'out_of_scope' && o.kind === 'milestone' ? html`<p><a href="/my/contracts/${orders.snapshotOf(o).terms.contract_id}">변경 계약(추가 개발 견적)으로 진행</a></p>` : ''}
+    ${v.scope_class === 'out_of_scope' && o.kind === 'product' ? html`<p><a href="/requests/new?product=${o.product_id}">추가 개발 요청으로 진행</a></p>` : ''}
     ${role === 'seller' && v.status === 'open' ? html`<form method="post" action="/my/sales/${o.id}/revisions/${v.id}">${csrf(req)}
       ${field('계약 범위 분류', 'scope_class', '', { options: [['in_scope', '계약 범위 내 — 수정하겠습니다'], ['out_of_scope', '계약 범위 밖 — 추가 개발 견적이 필요합니다']] })}
       ${field('답변', 'response', '', { rows: 3, required: true, hint: '범위 밖이라면 계약의 어느 조항에 근거하는지 적어 주세요' })}<button class="btn sm">답변 등록</button></form>` : ''}</div>`));
@@ -125,6 +127,7 @@ r.get('/my/orders/:id', needUser, h(async (req, res) => {
   res.page({ title: o.title, my: true, body: html`
     <div class="head"><div><h1>${o.title}</h1><p class="sub">주문일 ${fmtDate(o.created_at)}</p></div><a class="btn sm" href="/orders/${o.id}/document">거래 문서 출력</a></div>
     ${V.ledgerPanel(o, 'buyer')}
+    ${o.kind === 'ip' ? notice(html`자산 인도와 권리 이전 절차 확인은 <a href="/my/ip/deals/${o.ip_deal_id}">권리 거래 화면</a>에서 진행합니다. 모든 인도 항목과 권리 이전 절차를 확인해야 구매확정할 수 있습니다`) : ''}
     ${['none', 'failed', 'cancelled'].includes(o.payment_status) ? notice(html`아직 결제되지 않았습니다. <a href="/checkout/${o.id}">결제 진행</a>`, 'warn') : ''}
     ${o.payment_status === 'pending' ? notice(html`결제 사업자의 확인을 기다리고 있습니다. 결제를 마쳤다면 잠시 후 새로 고침 하세요. <a href="/pay/return/${o.id}">지금 다시 확인</a>`, 'warn') : ''}
     ${V.filesCard(req, o, 'buyer', `/my/orders/${o.id}`)}
@@ -196,7 +199,7 @@ r.get('/my/sales', needUser, (req, res) => {
 r.get('/my/sales/:id', needUser, h(async (req, res) => {
   const { order: o, role } = orders.loadFor(req.user, req.params.id);
   if (role !== 'seller') return res.redirect(`/my/orders/${o.id}`);
-  const canDeliver = ['awaiting_seller', 'redelivery_requested'].includes(o.delivery_status) && ['paid', 'partially_refunded'].includes(o.payment_status);
+  const canDeliver = o.kind !== 'ip' && ['awaiting_seller', 'redelivery_requested'].includes(o.delivery_status) && ['paid', 'partially_refunded'].includes(o.payment_status);
   const draft = q.get("SELECT * FROM deliveries WHERE order_id = ? AND status = 'draft'", o.id);
   const dfiles = draft ? deliveries.filesOf(draft.id) : [];
   const reqs = deliveries.requirements(o);
@@ -205,6 +208,7 @@ r.get('/my/sales/:id', needUser, h(async (req, res) => {
   res.page({ title: o.title, my: true, body: html`
     <div class="head"><div><h1>${o.title}</h1><p class="sub">판매 주문 · ${fmtDate(o.created_at)}</p></div><a class="btn sm" href="/orders/${o.id}/document">거래 문서 출력</a></div>
     ${V.ledgerPanel(o, 'seller')}
+    ${o.kind === 'ip' ? notice(html`자산 인도는 <a href="/my/ip/deals/${o.ip_deal_id}">권리 거래 화면</a>의 인도 목록에서 항목별로 진행합니다`) : ''}
     ${o.payment_status === 'pending' || o.payment_status === 'none' ? notice('결제가 확인되지 않았습니다. 결제 확인 전에는 작업을 시작하지 마세요', 'warn') : ''}
     ${canDeliver ? card('납품 등록', html`
       <p class="sub">납품 기한 ${fmtDate(o.delivery_due_at)}. 제출하면 파일 목록이 고정되고 구매자의 검수 기간이 시작됩니다${reqs.requiresSource ? '. 이 거래는 소스코드와 실행 방법이 포함되어야 제출할 수 있습니다. 화면 캡처나 시연 영상만으로는 완료 처리되지 않습니다' : ''}</p>

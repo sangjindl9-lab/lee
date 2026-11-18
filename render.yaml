@@ -1,0 +1,29 @@
+# Render 블루프린트(선택): 대시보드 → New → Blueprint → 이 저장소 선택
+# SQLite와 암호화 파일을 쓰므로 영구 디스크가 필요하고 인스턴스는 1개로 운영합니다.
+services:
+  - type: web
+    name: eum-market
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    disk:
+      name: eum-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - { key: NODE_VERSION, value: "22" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATA_DIR, value: /var/data }
+      - { key: TRUST_PROXY, value: "1" }
+      - { key: COOKIE_SECURE, value: "1" }
+      - { key: REQUIRE_ADMIN_MFA, value: "1" }
+      - { key: PAYMENT_PROVIDER, value: sandbox }
+      - { key: SESSION_SECRET, generateValue: true }
+      - { key: SANDBOX_WEBHOOK_SECRET, generateValue: true }
+      - { key: FILE_MASTER_KEY, sync: false }     # openssl rand -hex 32 로 만들어 직접 입력하고 별도 보관
+      - { key: BASE_URL, sync: false }
+      - { key: ADMIN_EMAIL, sync: false }
+      - { key: ADMIN_PASSWORD, sync: false }

@@ -47,7 +47,7 @@ const config = {
   clamscanPath: env.CLAMSCAN_PATH || '',
   maxUploadBytes: Number(env.MAX_UPLOAD_MB || 200) * 1024 * 1024,
   anthropicKey: env.ANTHROPIC_API_KEY || '',
-  aiModel: env.AI_MODEL || 'claude-sonnet-5-5',
+  aiModel: env.AI_MODEL || 'claude-opus-5-5',
 };
 if (!/^[0-9a-f]{64}$/i.test(config.fileMasterKey)) throw new Error('FILE_MASTER_KEY는 64자리 hex여야 합니다.');
 module.exports = config;
