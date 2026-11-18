@@ -6,17 +6,16 @@
   "private": true,
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "node --disable-warning=ExperimentalWarning server.js",
     "migrate": "node src/db.js",
     "seed": "node scripts/seed.js",
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
-    "better-sqlite3": "^13.2.0",
     "cookie-parser": "^1.4.7",
     "express": "^4.22.3",
     "multer": "^2.5.0"

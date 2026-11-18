@@ -1,11 +1,11 @@
 'use strict';
-// 백업: SQLite 온라인 백업(서비스 중 실행 가능) + 암호화 파일 저장소 복사.
+// 백업: SQLite 일관 사본(VACUUM INTO, 서비스 중 실행 가능) + 암호화 파일 저장소 복사.
 // 사용: node scripts/backup.js /백업/경로
 // 복구: 서버를 멈추고 백업의 eum.db와 files/를 DATA_DIR에 되돌린 뒤 같은 FILE_MASTER_KEY로 기동.
 // FILE_MASTER_KEY는 이 백업에 들어 있지 않다. 키를 잃으면 납품 파일을 복호화할 수 없으므로 별도 보관한다.
 const fs = require('fs');
 const path = require('path');
-const Database = require('better-sqlite3');
+const Database = require('../src/sqlite');
 const config = require('../src/config');
 
 (async () => {
@@ -15,7 +15,8 @@ const config = require('../src/config');
   const dir = path.join(dest, 'eum-' + stamp);
   fs.mkdirSync(dir, { recursive: true });
   const db = new Database(path.join(config.dataDir, 'eum.db'), { readonly: true });
-  await db.backup(path.join(dir, 'eum.db'));
+  // VACUUM INTO: 서비스 중에도 일관된 사본을 만든다.
+  db.exec(`VACUUM INTO '${path.join(dir, 'eum.db').replace(/'/g, "''")}'`);
   db.close();
   const check = new Database(path.join(dir, 'eum.db'), { readonly: true });
   const ok = check.pragma('integrity_check', { simple: true });

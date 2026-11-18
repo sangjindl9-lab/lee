@@ -35,5 +35,5 @@ npm test                    # 58개 테스트
 
 ## 구성
 
-- Node.js 22 · Express · SQLite(better-sqlite3) · 서버 렌더링(별도 빌드 단계 없음)
+- Node.js 22.13 이상 · Express · SQLite(Node.js 내장 `node:sqlite`, 네이티브 모듈 컴파일 불필요) · 서버 렌더링(별도 빌드 단계 없음)
 - `src/migrations/` DB 스키마, `src/services/` 거래 로직, `src/providers/` 결제 사업자 계층, `src/routes/` 화면, `test/` 테스트

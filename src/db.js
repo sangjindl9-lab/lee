@@ -1,7 +1,7 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
+const Database = require('./sqlite');
 const config = require('./config');
 const { clock } = require('./util');
 
