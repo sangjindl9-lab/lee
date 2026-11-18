@@ -220,7 +220,7 @@ r.get('/experts', (req, res) => {
 // ── 안전거래 안내: 실제 보호 범위와 한계
 r.get('/guide', (req, res) => {
   const c = providers.caps();
-  const yn = (v, t = '지원(확인됨)', f = '미지원 또는 미확인') => (v ? tag(t, 'ok') : tag(f, 'warn'));
+  const yn = (v, t = '지원(확인됨)', f = '미지원 또는 미확인') => (v ? (c.mode === 'test' ? tag('시뮬레이션', 'warn') : tag(t, 'ok')) : tag(f, 'warn'));
   res.page({ title: '안전거래 안내', body: html`<div class="head"><div><h1>안전거래 안내</h1><p class="sub">이음마켓이 실제로 하는 일과 하지 못하는 일을 구분해 안내합니다</p></div></div>
     ${c.mode === 'test' ? notice('현재 이 사이트는 테스트 결제 환경입니다. 실제 돈이 이동하지 않으며 결제대금 보호도 적용되지 않습니다', 'warn') : ''}
     ${card('세 가지는 서로 다른 장치입니다', table(['구분', '누가 하는가', '하는 일', '하지 못하는 일'], [
@@ -230,8 +230,8 @@ r.get('/guide', (req, res) => {
     ]))}
     ${card(`현재 결제 사업자 기능 (${c.provider}${c.mode === 'test' ? ' · 테스트' : ''})`, html`${ui.dl([
       ['대금 보류', c.mode === 'test' ? tag('시뮬레이션 — 실제 보호 없음', 'warn') : yn(c.escrow_hold)], ['최대 보류 기간', c.max_hold_days ? `${c.max_hold_days}일${c.mode === 'test' ? ' (시뮬레이션)' : ''}` : '확인되지 않음'],
-      ['분쟁 시 지급 중지', yn(c.dispute_hold)], ['부분 환불 가능 결제수단', (c.partial_refund_methods || []).join(', ') || '확인되지 않음 — 수동 절차'],
-      ['단계별 결제', yn(c.staged_payments)], ['판매자 지급 방식', c.payout_api ? '사업자 지급 API' : '수동 지급(운영자 이체 후 증빙 기록)'],
+      ['분쟁 시 지급 중지', yn(c.dispute_hold)], ['부분 환불 가능 결제수단', ((c.partial_refund_methods || []).join(', ') || '확인되지 않음 — 수동 절차') + (c.mode === 'test' ? ' (시뮬레이션)' : '')],
+      ['단계별 결제', yn(c.staged_payments)], ['판매자 지급 방식', c.mode === 'test' ? '시뮬레이션 — 실제 지급 없음' : c.payout_api ? '사업자 지급 API' : '수동 지급(운영자 이체 후 증빙 기록)'],
     ])}<p class="hint">운영자가 계약·문서로 확인한 기능만 켜집니다. 납품 기한과 검수 기간이 사업자의 보류 기간 안에 들어오지 않는 상품은 결제가 막힙니다</p>`)}
     <div class="grid g2">
       ${card('구매자', html`<ol class="steps"><li>상품의 제공물, 권리 범위, 추가 비용, 검수 기준을 확인합니다</li><li>결제하면 서버가 결제 사업자에 결제 상태를 확인합니다</li><li>확인 즉시 주문 전용 다운로드 권한이 생깁니다. 구매확정을 먼저 누를 필요가 없습니다</li><li>검수 기간 안에 구매확정 또는 문제 제기를 합니다. 다운로드만으로 검수가 끝나지 않습니다</li><li>문제 제기 시 분쟁 절차로 전환되고 정산이 가능한 범위에서 보류됩니다</li></ol>`)}
